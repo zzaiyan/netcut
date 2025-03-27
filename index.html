@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>在线剪贴板</title>
+  <style>
+    body {
+      margin: 0; padding: 0; font-family: Arial, sans-serif; 
+      display: flex; justify-content: center; align-items: center;
+      height: 100vh; background: linear-gradient(135deg, #f0f4f8, #d9e2ec);
+    }
+    .container {
+      background: #fff; padding: 20px; border-radius: 12px; /* 增大圆角 */
+      box-shadow: 0 0 8px rgba(0, 0, 0, 0.1); width: fit-content;
+      min-width: 400px; max-width: 100%;
+      min-height: 200px; max-height: 100%;
+      display: flex; flex-direction: column; gap: 15px;
+    }
+    input, textarea, button {
+      width: 100%; box-sizing: border-box; padding: 12px; /* 增高按钮和输入框 */
+      border: 1px solid #ccc; border-radius: 6px; /* 增大圆角 */
+      font-size: 14px;
+    }
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #007bff;
+      box-shadow: 0 0 8px rgba(0, 123, 255, 0.5); /* 发光效果 */
+    }
+    textarea {
+      resize: both;
+    }
+    button {
+      cursor: pointer; background: #007bff; color: #fff;
+      border: none; font-weight: bold; padding: 12px 16px; /* 增高按钮 */
+      transition: background 0.3s ease; /* 增加动画效果 */
+    }
+    button:hover {
+      background: #0056b3; /* hover 时的颜色 */
+    }
+    #toastMessage {
+      position: fixed; bottom: 25%; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.5); color: #fff; padding: 10px;
+      border-radius: 4px; display: none; opacity: 0; transition: opacity 0.5s;
+      pointer-events: none;
+    }
+    #btnRandomKey {
+      width: 30%;
+      min-width: 100px;
+    }
+    .button-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    <!-- @media (min-width: 480px) {
+      .button-group {
+        flex-direction: row;
+      }
+    } -->
+    .extra-button-group {
+      display: flex;
+      flex-direction: row;
+      gap: 10px;
+    }
+    h2 {
+      color: #333333; /* 修改标题颜色 */
+      text-align: center; /* 标题居中 */
+      font-size: 1.8em; /* 增大标题字体 */
+      margin: 0; /* 去掉标题上下边距 */
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>在线剪贴板</h2>
+    <div style="display:flex; gap:10px;">
+      <input id="txtKey" placeholder="请输入或生成随机key" />
+      <button id="btnRandomKey" onclick="generateRandomKey()">随机生成</button>
+    </div>
+    <textarea id="txtValue" rows="6" placeholder="在此处输入内容"></textarea>
+    <div class="button-group">
+      <button onclick="saveValue()">保存</button>
+      <button onclick="loadValue()">读取</button>
+      <button onclick="deleteValue()">删除</button>
+    </div>
+    <div class="extra-button-group">
+      <button onclick="copyURL()">复制URL</button>
+      <button onclick="copyContent()">复制内容</button>
+    </div>
+  </div>
+  <div id="toastMessage"></div>
+  <script>
+    function showToast(msg) {
+      const toast = document.getElementById('toastMessage');
+      toast.innerText = msg;
+      toast.style.display = 'block';
+      toast.style.opacity = '1';
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => {
+          toast.style.display = 'none';
+        }, 500);
+      }, 2000);
+    }
+
+    // 页面加载时检查 URL 参数
+    window.onload = function () {
+      const urlParams = new URLSearchParams(window.location.search);
+      const key = urlParams.get('key');
+      if (key) {
+        document.getElementById('txtKey').value = key;
+        loadValue(); // 自动查询
+      }
+    };
+
+    function hashKey(key) {
+      const salt = 'zzaiyan_'; // 定义盐值
+      <!-- return btoa(salt + key); // 使用 Base64 编码加盐后的 key -->
+      return salt + key; // 不使用 Base64 编码
+    }
+
+    function saveValue() {
+      const key = document.getElementById('txtKey').value.trim();
+      const value = document.getElementById('txtValue').value; // 保留多行文本和末尾空格
+      if (!key) return showToast('请输入 key');
+      const hashedKey = hashKey(key); // 加盐处理
+      const url = 'https://api.textdb.online/update/?key=' + hashedKey + '&value=' + encodeURIComponent(value);
+      fetch(url, { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 1) {
+            showToast('保存成功');
+            // 更新 URL
+            const newUrl = `${window.location.origin}${window.location.pathname}?key=${key}`;
+            history.pushState(null, '', newUrl);
+          } else {
+            showToast('保存失败或次数用尽');
+          }
+        })
+        .catch(() => showToast('网络或其他错误'));
+    }
+
+    function loadValue() {
+      const key = document.getElementById('txtKey').value.trim();
+      if (!key) return showToast('请输入 key');
+      const hashedKey = hashKey(key); // 加盐处理
+      const url = 'https://textdb.online/' + hashedKey;
+      fetch(url)
+        .then(res => res.text())
+        .then(txt => {
+          document.getElementById('txtValue').value = txt; // 保留多行文本和末尾空格
+          showToast('读取成功');
+        })
+        .catch(() => showToast('读取失败或内容不存在'));
+    }
+
+    function deleteValue() {
+      const key = document.getElementById('txtKey').value.trim();
+      if (!key) return showToast('请输入 key');
+      const hashedKey = hashKey(key); // 加盐处理
+      const url = 'https://api.textdb.online/update/?key=' + hashedKey + '&value=';
+      fetch(url, { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 1) {
+            showToast('删除成功');
+            document.getElementById('txtValue').value = '';
+          } else showToast('删除失败');
+        })
+        .catch(() => showToast('网络或其他错误'));
+    }
+
+    function generateRandomKey() {
+      let chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let key = '';
+      for (let i = 0; i < 16; i++) {
+        key += chars[Math.floor(Math.random() * chars.length)];
+      }
+      document.getElementById('txtKey').value = key;
+    }
+
+    // 修改 URL 生成逻辑，适配子目录
+    function copyURL() {
+      const key = document.getElementById('txtKey').value.trim();
+      if (!key) return showToast('请输入 key');
+      const url = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '')}/?key=${key}`;
+      navigator.clipboard.writeText(url)
+        .then(() => showToast('URL复制成功'))
+        .catch(() => showToast('URL复制失败'));
+    }
+
+    function copyContent() {
+      const content = document.getElementById('txtValue').value.trim();
+      if (!content) return showToast('没有可复制的内容');
+      navigator.clipboard.writeText(content)
+        .then(() => showToast('内容复制成功'))
+        .catch(() => showToast('内容复制失败'));
+    }
+  </script>
+</body>
+</html>
